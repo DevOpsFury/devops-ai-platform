@@ -94,6 +94,89 @@ Pozostałe endpointy: `GET /api/v1/knowledge`, `DELETE /api/v1/knowledge/{id}`, 
 
 Wspólny klucz API jest przeznaczony do lokalnego laboratorium; nie zapewnia indywidualnej tożsamości zatwierdzającego ani zastępstwa dla SSO/RBAC w środowisku produkcyjnym. Decyzja approval jest tylko wpisem audytowym — nie uruchamia zaakceptowanej akcji.
 
+## Lab k3s
+
+Lokalny klaster k3s dostępny dla kontenera API, trzy testowe usługi oraz skrypty do wywoływania i odtwarzania awarii opisano w [k3s_lab/README.md](./k3s_lab/README.md).
+
+### Pełny use case: od awarii do weryfikacji
+
+Poniższy przebieg pokazuje pracę operatora z agentami i zatwierdzaniem zmian. Wymaga uruchomionej aplikacji, skonfigurowanego dostawcy LLM oraz klastra przygotowanego poleceniem `./k3s_lab/start.sh`.
+
+1. **Wywołaj problem i sprawdź stan klastra.** Przykładowo wyłącz testową usługę WWW:
+
+   ```sh
+   ./k3s_lab/break.sh web-down
+   ./k3s_lab/status.sh
+   ```
+
+   W statusie deployment `web` będzie miał zero replik.
+
+2. **Przekaż agentom objawy do zbadania.** W opisie podaj zaobserwowane fakty i środowisko, a nie tylko oczekiwane rozwiązanie:
+
+   ```sh
+   API_URL=http://localhost:8000
+   API_KEY='wartosc-APP_API_KEY-z-pliku-.env'
+
+   curl -X POST "$API_URL/api/v1/incidents/diagnose" \
+     -H 'Content-Type: application/json' \
+     -H "X-API-Key: $API_KEY" \
+     -d '{
+       "title": "Usługa web nie odpowiada",
+       "description": "W klastrze k3s-lab w namespace devops-lab deployment web ma 0/0 dostępnych replik. Problem pojawił się podczas testu web-down.",
+       "environment": "devops-lab"
+     }'
+   ```
+
+   Odpowiedź zawiera raporty agentów, podsumowanie, rekomendację oraz identyfikatory incydentu i przebiegu. Odczytaj raport i oceń proponowane działanie. W obecnej wersji stan klastra i objawy przekazuje operator: API nie odpytuje jeszcze klastra samodzielnie, a diagnoza jest hipotezą, nie potwierdzeniem przyczyny.
+
+3. **Utwórz prośbę o decyzję.** Jeśli rekomendacja wymaga działania, opisz je konkretnie i utwórz wniosek approval:
+
+   ```sh
+   curl -X POST "$API_URL/api/v1/approvals" \
+     -H 'Content-Type: application/json' \
+     -H "X-API-Key: $API_KEY" \
+     -d '{
+       "requested_action": "Przywrócić deployment web do jednej repliki w namespace devops-lab przez zastosowanie manifestów bazowych laboratorium.",
+       "risk_level": "low",
+       "requested_by": "operator"
+     }'
+   ```
+
+   Zapisz `id` z odpowiedzi. Operator może przejrzeć wniosek, a następnie wysłać decyzję (podstaw identyfikator otrzymany powyżej):
+
+   ```sh
+   curl -X POST "$API_URL/api/v1/approvals/<approval-id>/decision" \
+     -H 'Content-Type: application/json' \
+     -H "X-API-Key: $API_KEY" \
+     -d '{
+       "decision": "approved",
+       "decided_by": "operator",
+       "note": "Zatwierdzono przywrócenie usługi testowej."
+     }'
+   ```
+
+   Decyzja jest rejestrowana w bazie i audycie, ale **nie wykonuje naprawy**. Działanie w klastrze wykonaj oddzielnie, ręcznie i tylko w tym lokalnym laboratorium:
+
+   ```sh
+   ./k3s_lab/recover.sh
+   ./k3s_lab/status.sh
+   ```
+
+4. **Sprawdź rezultat i zamknij pętlę.** Potwierdź w statusie, że deployment `web` ma jedną dostępną replikę, a pody usług są gotowe. Następnie ponownie wyślij diagnozę z aktualnym wynikiem w opisie, aby uzyskać raport kontrolny; API nie prowadzi automatycznego monitoringu ani nie weryfikuje, czy zatwierdzona akcja została wykonana.
+
+   ```sh
+   curl -X POST "$API_URL/api/v1/incidents/diagnose" \
+     -H 'Content-Type: application/json' \
+     -H "X-API-Key: $API_KEY" \
+     -d '{
+       "title": "Weryfikacja naprawy usługi web",
+       "description": "Po ręcznym uruchomieniu ./k3s_lab/recover.sh deployment web ma 1/1 dostępnych replik, a jego pod jest gotowy. Wynik sprawdzono poleceniem ./k3s_lab/status.sh.",
+       "environment": "devops-lab"
+     }'
+   ```
+
+Ten scenariusz demonstruje obecny przepływ human-in-the-loop: **operator zgłasza objawy → agenci przygotowują diagnozę i rekomendację → operator podejmuje i zapisuje decyzję → operator wykonuje zatwierdzoną czynność → operator sprawdza i przekazuje wynik**. Aplikacja nie wykonuje poleceń w klastrze; dostęp Kubernetes skonfigurowany dla kontenera jest tylko do odczytu.
+
 ## Aktualizacja schematu bazy
 
 Przy uruchomieniu Compose migracje Alembic wykonują się automatycznie. Nową migrację można wygenerować i zastosować wewnątrz kontenera:

@@ -6,6 +6,10 @@ services:
       DATABASE_URL: postgresql+psycopg://devops:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/devops_platform
       QDRANT_URL: http://qdrant:6333
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      KUBERNETES_API_URL: ${KUBERNETES_API_URL:-https://host.docker.internal:6550}
+      KUBECONFIG: /run/k3s-lab/config
+    volumes:
+      - ./k3s_lab/credentials:/run/k3s-lab:ro
     ports:
       - "8000:8000"
     depends_on:
