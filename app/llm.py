@@ -50,6 +50,11 @@ def complete(system_prompt: str, user_prompt: str) -> str:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.1,
+            extra_body=(
+                {"options": {"num_ctx": settings.ollama_num_ctx}}
+                if provider == "ollama"
+                else None
+            ),
         )
         content = response.choices[0].message.content
         if not content:

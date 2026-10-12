@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,8 +15,16 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:3b"
     llm_api_key: SecretStr | None = None
     llm_base_url: str = "http://localhost:11434/v1"
+    ollama_num_ctx: int = Field(default=8192, ge=2048, le=32768)
     anthropic_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
+    kubernetes_namespace: str = "devops-lab"
+    kubernetes_kubeconfig: str | None = Field(
+        default=None,
+        validation_alias="KUBECONFIG",
+    )
+    kubernetes_logs_tail_lines: int = Field(default=100, ge=1, le=500)
+    kubernetes_max_pods_with_logs: int = Field(default=20, ge=1, le=100)
 
 
 @lru_cache

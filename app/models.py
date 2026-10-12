@@ -40,6 +40,7 @@ class AgentRun(Base):
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(160), nullable=False)
     evidence: Mapped[list] = mapped_column(JSON, nullable=False)
+    kubernetes_diagnostics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     agent_reports: Mapped[dict] = mapped_column(JSON, nullable=False)
     final_report: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

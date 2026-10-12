@@ -18,6 +18,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "services", "endpoints", "events"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
     verbs: ["get", "list", "watch"]
@@ -35,6 +38,28 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: devops-platform-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devops-platform-node-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devops-platform-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: devops-platform-reader
+    namespace: devops-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devops-platform-node-reader
 ---
 apiVersion: v1
 kind: Secret

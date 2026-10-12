@@ -7,13 +7,13 @@ Minimalny, uruchamialny szkielet platformy inspirowany artykułem: zespół agen
 - **FastAPI** — API platformy i jej dokumentacja OpenAPI.
 - **PostgreSQL + Alembic** — incydenty, runbooki, przebiegi agentów, zatwierdzenia i audyt. Migracje są wykonywane przy starcie kontenera API.
 - **Qdrant + FastEmbed** — semantyczne wyszukiwanie wiedzy; model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` pobiera się przy pierwszym indeksowaniu.
-- **Agenci** — triage, observability i SecOps pracują na tej samej sprawie; supervisor scala ich raporty.
+- **Agenci** — triage, observability i SecOps analizują runbooki oraz read-only snapshot diagnostyczny lokalnego klastra k3s; supervisor scala ich raporty.
 - **Anthropic, OpenAI lub Ollama** — wybór dostawcy przez zmienne środowiskowe, niezależny od reszty API.
 - **Human-in-the-loop** — wnioski o zatwierdzenie i decyzje są zapisywane w audycie.
 
-Wersja bazowa celowo nie łączy się z klastrami, chmurą, monitoringiem ani shell’em i nie wykonuje działań naprawczych. Raport agenta jest hipotezą, a nie dowodem ani poleceniem wykonanym w infrastrukturze.
+API odczytuje stan węzłów, podów, Deploymentów, ReplicaSetów, usług, Endpointów, zdarzeń i ograniczoną liczbę ostatnich linii logów z namespace `devops-lab`. Agenci mogą na tej podstawie formułować rekomendacje; dostęp Kubernetes jest wyłącznie read-only i nie obejmuje innych namespace’ów. System nie łączy się z zewnętrznym monitoringiem ani repozytorium wdrożeń i nie wykonuje działań naprawczych. Raport agenta pozostaje hipotezą do weryfikacji.
 
-Compose jest konfiguracją laboratoryjną: API i Ollama są publikowane na hosta bez TLS. Przed udostępnieniem poza zaufanym komputerem dodaj TLS, właściwe uwierzytelnianie/RBAC, zarządzanie sekretami i ograniczenia sieciowe; nie traktuj wspólnego klucza API jako tożsamości operatora.
+Logi są przekazywane do wybranego dostawcy LLM i zapisywane wraz z przebiegiem w PostgreSQL; mogą zawierać dane wrażliwe. Compose jest konfiguracją laboratoryjną: API i Ollama są publikowane na hosta bez TLS. Przed udostępnieniem poza zaufanym komputerem dodaj TLS, właściwe uwierzytelnianie/RBAC, zarządzanie sekretami i ograniczenia sieciowe; nie traktuj wspólnego klucza API jako tożsamości operatora.
 
 ## Uruchomienie
 
@@ -90,13 +90,14 @@ curl -X POST http://localhost:8000/api/v1/incidents/diagnose \
   -d '{"title":"Wzrost błędów timeout","description":"Po wdrożeniu wzrosła liczba timeoutów. Brak jeszcze danych z metryk.","environment":"staging"}'
 ```
 
-Pozostałe endpointy: `GET /api/v1/knowledge`, `DELETE /api/v1/knowledge/{id}`, `POST /api/v1/approvals`, `POST /api/v1/approvals/{id}/decision`, `GET /api/v1/audit`.
+Pozostałe endpointy: `GET /api/v1/k8s/diagnostics`, `GET /api/v1/k8s/pods/{pod_name}/logs`, `GET /api/v1/knowledge`, `DELETE /api/v1/knowledge/{id}`, `POST /api/v1/approvals`, `POST /api/v1/approvals/{id}/decision`, `GET /api/v1/audit`.
 
 Wspólny klucz API jest przeznaczony do lokalnego laboratorium; nie zapewnia indywidualnej tożsamości zatwierdzającego ani zastępstwa dla SSO/RBAC w środowisku produkcyjnym. Decyzja approval jest tylko wpisem audytowym — nie uruchamia zaakceptowanej akcji.
 
 ## Lab k3s
 
 Lokalny klaster k3s dostępny dla kontenera API, trzy testowe usługi oraz skrypty do wywoływania i odtwarzania awarii opisano w [k3s_lab/README.md](./k3s_lab/README.md).
+Szczegółowy opis zakresu diagnostyki, endpointów, RBAC i ograniczeń prywatności znajduje się w [docs/README.md](./docs/README.md).
 
 ### Pełny use case: od awarii do weryfikacji
 
@@ -127,7 +128,7 @@ Poniższy przebieg pokazuje pracę operatora z agentami i zatwierdzaniem zmian. 
      }'
    ```
 
-   Odpowiedź zawiera raporty agentów, podsumowanie, rekomendację oraz identyfikatory incydentu i przebiegu. Odczytaj raport i oceń proponowane działanie. W obecnej wersji stan klastra i objawy przekazuje operator: API nie odpytuje jeszcze klastra samodzielnie, a diagnoza jest hipotezą, nie potwierdzeniem przyczyny.
+   Odpowiedź zawiera raporty agentów, rekomendację, snapshot aktualnego stanu klastra (`kubernetes_diagnostics`) oraz identyfikatory incydentu i przebiegu. API samodzielnie pobiera statusy, zdarzenia i ograniczone logi w `devops-lab`; agent formułuje hipotezę na podstawie tych danych, a nie wykonuje naprawy.
 
 3. **Utwórz prośbę o decyzję.** Jeśli rekomendacja wymaga działania, opisz je konkretnie i utwórz wniosek approval:
 
