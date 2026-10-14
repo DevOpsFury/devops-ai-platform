@@ -1,0 +1,42 @@
+11.5. Próba ogniowa: Diagnozujemy awarię w piaskownicy K3d
+Czas na test na żywym organizmie. W naszym klastrze K3d mamy celowo uszkodzoną aplikację orders-api w namespace default, która wpadła w pętlę błędów (CrashLoopBackOff).
+Odpalamy nasz skrypt diagnostyczny i sprawdzamy, jak radzi sobie agent:
+if __name__ == "__main__":
+    print("=== INICJACJA DIAGNOZY PRZEZ AGENTA TRIAGE ===")
+    user_query = "System zgłasza błędy w usłudze orders-api. Ustal co dokładnie się dzieje w klastrze."
+
+    response = agent_executor.invoke({"input": user_query})
+    print("\n=== KOŃCOWY RAPORT AGENTA ===")
+    print(response["output"])
+
+Przebieg pętli decyzyjnej w konsoli (Logi wykonania):
+
+> Entering new AgentExecutor chain...
+
+Invoking: `check_k8s_pod_status` with `{'namespace': 'default'}`
+
+Response: {'status': 'SUCCESS', 'namespace': 'default', 'pods': [{'name': 'orders-api-78f997645f-x9l2k', 'status': 'Running', 'restarts': 5, 'ip': '10.42.0.18'}]}
+
+Invoking: `fetch_k8s_pod_logs` with `{'pod_name': 'orders-api-78f997645f-x9l2k', 'namespace': 'default', 'tail_lines': 20}`
+
+Response: {'status': 'SUCCESS', 'pod_name': 'orders-api-78f997645f-x9l2k', 'lines_returned': 3, 'logs': '2026-10-06 15:10:02 [ERROR] Database connection failed at 10.96.0.55:5432\n2026-10-06 15:10:02 [FATAL] FATAL: password authentication failed for user "orders_user"\n2026-10-06 15:10:03 [EMERG] Application shutting down.'}
+
+=== KOŃCOWY RAPORT AGENTA ===
+- STATUS KLASTRA: Pod `orders-api-78f997645f-x9l2k` jest w stanie 'Running', ale zanotował już 5 restartów.
+- ZIDENTYFIKOWANY PROBLEM: Awaria autoryzacji podczas nawiązywania połączenia z bazą danych PostgreSQL.
+- DOWÓD Z LOGÓW: `FATAL: password authentication failed for user "orders_user"`
+- REKOMENDOWANA HIPOTEZA: Niepoprawne dane uwierzytelniające (hasło) w pliku konfiguracyjnym lub w obiekcie Kubernetes Secret po ostatnim wdrożeniu.
+
+Widzimy, że pierwsza analiza poszła gładko. Agent Triage poprowadził śledztwo krok po kroku:
+Nie wymyślił zmyślonych błędów o pamięci.
+Najpierw odpytał o status klastra przez nasz Broker w FastAPI.
+Gdy zobaczył restarty, pociągnął za właściwe narzędzie i pobrał logi.
+Wyłapał konkretny wyjątek (password authentication failed).
+Złożył czytelną hipotezę dla inżyniera.
+Co nam daje to doświadczenie?
+Ten sukces potwierdza, że przyjęty wzorzec działa. Rozdzielenie myślenia (Model LLM) od działania (Broker FastAPI) przynosi jasne korzyści:
+Przewidywalność: Model nie musi pamiętać komend kubectl – po prostu wywołuje gotowe funkcje.
+Bezpieczeństwo: Pydantic odrzuca błędne parametry na wejściu, blokując agentowi możliwość wyjścia poza wyznaczone ramy.
+Przejrzystość: Mamy pełen wgląd w ślad wywołań API.
+Widzimy też wyraźnie kolejne wyzwanie: nasz Agent Triage świetnie diagnozuje, ale nie zna jeszcze wiedzy firmowej (nie wie, gdzie trzymamy sekrety i runbooki) i nie ma uprawnień do naprawy.
+W kolejnym kroku rozwijamy nasz system: podłączamy bazę wektorową Qdrant, dostarczamy RAG z firmową wiedzą i domykamy pełną pętlę wnioskowania.

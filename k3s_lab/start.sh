@@ -21,6 +21,9 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+ORDERS_API_IMAGE="devops-lab/orders-api:latest"
+docker build -t "$ORDERS_API_IMAGE" "${SCRIPT_DIR}/orders_api"
+
 if ! k3d cluster list | awk 'NR > 1 { print $1 }' | grep -Fxq "$CLUSTER_NAME"; then
   k3d cluster create "$CLUSTER_NAME" \
     --servers 1 \
@@ -30,9 +33,12 @@ if ! k3d cluster list | awk 'NR > 1 { print $1 }' | grep -Fxq "$CLUSTER_NAME"; t
     --wait
 fi
 
+k3d image import "$ORDERS_API_IMAGE" --cluster "$CLUSTER_NAME"
 kubectl --context "$CONTEXT" apply -f "${SCRIPT_DIR}/manifests/lab.yaml"
+kubectl --context "$CONTEXT" --namespace "$NAMESPACE" \
+  rollout restart deployment/orders-api
 
-for deployment in web api cache; do
+for deployment in web api cache orders-api; do
   kubectl --context "$CONTEXT" --namespace "$NAMESPACE" \
     rollout status "deployment/${deployment}" --timeout=180s
 done

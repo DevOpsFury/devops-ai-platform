@@ -30,6 +30,8 @@ To nie jest pełna telemetria klastra: aplikacja nie pobiera metryk CPU/RAM z Me
    ./k3s_lab/start.sh
    ```
 
+   Compose uruchamia również serwis `cache` (`redis:7-alpine`) i publikuje port `6379`. To osobny Redis pomocniczy; aplikacja obecnie z niego nie korzysta. Nie należy mylić go z Deploymentem `cache` w k3s, który jest częścią scenariusza `cache-kill`.
+
 2. `start.sh` tworzy kubeconfig w `k3s_lab/credentials/config`. Jest on montowany do kontenera API tylko do odczytu. Zaktualizowane manifesty nadają ServiceAccount:
    - `get`, `list`, `watch` dla podów, usług, Endpointów i zdarzeń oraz `get` dla `pods/log` w `devops-lab`;
    - `get`, `list` dla obiektów Node;
@@ -61,8 +63,9 @@ Golden Dataset powinien opierać się na scenariuszach opisanych w [k3s_lab/READ
 - `web-down` — Deployment `web` zostaje przeskalowany do zera;
 - `api-bad-image` — Deployment `api` otrzymuje nieistniejący tag obrazu; przyczynę należy potwierdzić zdarzeniami poda;
 - `cache-kill` — usunięty pod `cache` zostaje odtworzony przez Deployment.
+- `orders-api-db-auth` — `orders-api` zapisuje sekwencję błędów uwierzytelnienia PostgreSQL i przechodzi w stan not-ready bez restartowania procesu; po diagnozie można wyzerować symulację przez `/fixme`.
 
-Scenariusze są wyzwalane i odtwarzane ręcznie przez skrypty laboratorium. Sam agent pozostaje diagnostyczny i nie wykonuje napraw.
+Scenariusze są wyzwalane i odtwarzane ręcznie przez skrypty laboratorium. `orders-api` udostępnia testowe endpointy `/break/db-auth` i `/fixme`; awaria nie restartuje procesu, dzięki czemu endpoint naprawczy pozostaje dostępny przez port-forward. Sam agent pozostaje diagnostyczny i nie wykonuje napraw.
 
 ## Granice bezpieczeństwa i prywatność
 

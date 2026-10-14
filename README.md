@@ -7,6 +7,7 @@ Minimalny, uruchamialny szkielet platformy inspirowany artykułem: zespół agen
 - **FastAPI** — API platformy i jej dokumentacja OpenAPI.
 - **PostgreSQL + Alembic** — incydenty, runbooki, przebiegi agentów, zatwierdzenia i audyt. Migracje są wykonywane przy starcie kontenera API.
 - **Qdrant + FastEmbed** — semantyczne wyszukiwanie wiedzy; model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` pobiera się przy pierwszym indeksowaniu.
+- **Redis (`cache`)** — pomocniczy serwis Compose dostępny na porcie `6379`; obecnie nie jest podłączony do kodu aplikacji. Jest niezależny od testowego Deploymentu `cache` w k3s.
 - **Agenci** — triage, observability i SecOps analizują runbooki oraz read-only snapshot diagnostyczny lokalnego klastra k3s; supervisor scala ich raporty.
 - **Anthropic, OpenAI lub Ollama** — wybór dostawcy przez zmienne środowiskowe, niezależny od reszty API.
 - **Human-in-the-loop** — wnioski o zatwierdzenie i decyzje są zapisywane w audycie.
@@ -96,7 +97,7 @@ Wspólny klucz API jest przeznaczony do lokalnego laboratorium; nie zapewnia ind
 
 ## Lab k3s
 
-Lokalny klaster k3s dostępny dla kontenera API, trzy testowe usługi oraz skrypty do wywoływania i odtwarzania awarii opisano w [k3s_lab/README.md](./k3s_lab/README.md).
+Lokalny klaster k3s dostępny dla kontenera API, cztery testowe usługi oraz skrypty do wywoływania i odtwarzania awarii opisano w [k3s_lab/README.md](./k3s_lab/README.md).
 Szczegółowy opis zakresu diagnostyki, endpointów, RBAC i ograniczeń prywatności znajduje się w [docs/README.md](./docs/README.md).
 
 ### Pełny use case: od awarii do weryfikacji
