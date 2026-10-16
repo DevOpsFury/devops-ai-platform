@@ -1,30 +1,32 @@
 # AI DevOps Team
 
-Minimalny, uruchamialny szkielet platformy inspirowany artykułem: zespół agentów, RAG dla runbooków, centralna baza danych, audyt i zatwierdzanie zmian przez człowieka.
+[Polski](./README.pl.md)
 
-## Architektura
+A minimal, runnable platform skeleton: an agent team, RAG for runbooks, a central database, auditing, and human approval of changes.
 
-- **FastAPI** — API platformy i jej dokumentacja OpenAPI.
-- **PostgreSQL + Alembic** — incydenty, runbooki, przebiegi agentów, zatwierdzenia i audyt. Migracje są wykonywane przy starcie kontenera API.
-- **Qdrant + FastEmbed** — semantyczne wyszukiwanie wiedzy; model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` pobiera się przy pierwszym indeksowaniu.
-- **Redis (`cache`)** — pomocniczy serwis Compose dostępny na porcie `6379`; obecnie nie jest podłączony do kodu aplikacji. Jest niezależny od testowego Deploymentu `cache` w k3s.
-- **Agenci** — triage, observability i SecOps analizują runbooki oraz read-only snapshot diagnostyczny lokalnego klastra k3s; supervisor scala ich raporty.
-- **Anthropic, OpenAI lub Ollama** — wybór dostawcy przez zmienne środowiskowe, niezależny od reszty API.
-- **Human-in-the-loop** — wnioski o zatwierdzenie i decyzje są zapisywane w audycie.
+## Architecture
 
-API odczytuje stan węzłów, podów, Deploymentów, ReplicaSetów, usług, Endpointów, zdarzeń i ograniczoną liczbę ostatnich linii logów z namespace `devops-lab`. Agenci mogą na tej podstawie formułować rekomendacje; dostęp Kubernetes jest wyłącznie read-only i nie obejmuje innych namespace’ów. System nie łączy się z zewnętrznym monitoringiem ani repozytorium wdrożeń i nie wykonuje działań naprawczych. Raport agenta pozostaje hipotezą do weryfikacji.
+- **FastAPI** — the platform API and its OpenAPI documentation.
+- **PostgreSQL + Alembic** — incidents, runbooks, agent runs, approvals, and audit records. Migrations run when the API container starts.
+- **Qdrant + FastEmbed** — semantic knowledge search; the `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` model is downloaded during the first indexing operation.
+- **Redis (`cache`)** — an auxiliary Compose service available on port `6379`; it is not currently connected to the application code. It is independent of the test `cache` Deployment in k3s.
+- **Agents** — triage, observability, and SecOps analyze runbooks and a read-only diagnostic snapshot of the local k3s cluster; the supervisor combines their reports.
+- **Anthropic, OpenAI, or Ollama** — choose a provider using environment variables, independently of the rest of the API.
+- **Human-in-the-loop** — approval requests and decisions are recorded in the audit log.
 
-Logi są przekazywane do wybranego dostawcy LLM i zapisywane wraz z przebiegiem w PostgreSQL; mogą zawierać dane wrażliwe. Compose jest konfiguracją laboratoryjną: API i Ollama są publikowane na hosta bez TLS. Przed udostępnieniem poza zaufanym komputerem dodaj TLS, właściwe uwierzytelnianie/RBAC, zarządzanie sekretami i ograniczenia sieciowe; nie traktuj wspólnego klucza API jako tożsamości operatora.
+The API reads the state of nodes, pods, Deployments, ReplicaSets, Services, Endpoints, events, and a limited number of recent log lines from the `devops-lab` namespace. Agents can use this information to make recommendations; Kubernetes access is read-only and does not include other namespaces. The system does not connect to external monitoring or a deployment repository and does not perform remediation. An agent report remains a hypothesis to be verified.
 
-## Uruchomienie
+Logs are sent to the selected LLM provider and stored along with the run in PostgreSQL; they may contain sensitive data. Compose is configured for a lab environment: the API and Ollama are published to the host without TLS. Before exposing the platform beyond a trusted computer, add TLS, appropriate authentication/RBAC, secrets management, and network restrictions; do not treat a shared API key as an operator identity.
 
-Wymagane: Docker z Compose. W katalogu projektu:
+## Getting started
+
+Requirements: Docker with Compose. From the project directory:
 
 ```sh
 cp .env.example .env
 ```
 
-Zmień `APP_API_KEY` i `POSTGRES_PASSWORD` na własne losowe wartości przed uruchomieniem. Hasło PostgreSQL powinno być alfanumeryczne, ponieważ Compose używa go także w URL połączenia. Następnie:
+Change `APP_API_KEY` and `POSTGRES_PASSWORD` to your own random values before starting. The PostgreSQL password should be alphanumeric because Compose also uses it in the connection URL. Then run:
 
 ```sh
 docker compose up --build -d
@@ -32,18 +34,18 @@ docker compose up --build -d
 
 API: <http://localhost:8000>; Swagger UI: <http://localhost:8000/docs>; health check: <http://localhost:8000/health>.
 
-Domyślny backend LLM to Ollama. Uruchom go wraz z platformą i pobierz przykładowy model:
+The default LLM backend is Ollama. Start it with the platform and pull an example model:
 
 ```sh
 docker compose up --build -d
 docker compose exec ollama ollama pull qwen2.5:3b
 ```
 
-Pierwsze indeksowanie wiedzy pobiera model embeddingów FastEmbed i może potrwać dłużej; kontener API potrzebuje dostępu do internetu podczas pobierania modelu.
+The first knowledge indexing operation downloads the FastEmbed embedding model and may take longer; the API container needs internet access while the model is being downloaded.
 
-### Zmiana dostawcy LLM
+### Changing the LLM provider
 
-Ustaw w `.env`, a następnie zrestartuj API:
+Set the values in `.env`, then restart the API:
 
 ```dotenv
 LLM_PROVIDER=anthropic
@@ -51,7 +53,7 @@ LLM_MODEL=claude-3-5-haiku-latest
 ANTHROPIC_API_KEY=...
 ```
 
-albo:
+or:
 
 ```dotenv
 LLM_PROVIDER=openai
@@ -67,84 +69,85 @@ LLM_MODEL=qwen2.5:3b
 LLM_BASE_URL=http://ollama:11434/v1
 ```
 
-API keys dostawców są potrzebne tylko dla wybranego backendu. Nie umieszczaj sekretów w repozytorium.
+Provider API keys are needed only for the selected backend. Do not put secrets in the repository.
 
 ## API
 
-Operacje z wyjątkiem `/health` wymagają nagłówka `X-API-Key` równemu `APP_API_KEY`.
+All operations except `/health` require an `X-API-Key` header whose value matches `APP_API_KEY`.
 
-Dodanie runbooka (indeksowanie w PostgreSQL i Qdrant):
+Add a runbook (indexed in PostgreSQL and Qdrant):
 
 ```sh
 curl -X POST http://localhost:8000/api/v1/knowledge \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: replace-this-with-a-long-random-value' \
-  -d '{"title":"Runbook: błędy połączeń do bazy","source":"ops/runbooks/database.md","content":"Sprawdź dostępność PostgreSQL, błędy uwierzytelniania, pulę połączeń i ostatnie wdrożenia. Nie restartuj produkcji bez zatwierdzenia."}'
+  -d '{"title":"Runbook: database connection errors","source":"ops/runbooks/database.md","content":"Check PostgreSQL availability, authentication errors, the connection pool, and recent deployments. Do not restart production without approval."}'
 ```
 
-Diagnoza incydentu:
+Diagnose an incident:
 
 ```sh
 curl -X POST http://localhost:8000/api/v1/incidents/diagnose \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: replace-this-with-a-long-random-value' \
-  -d '{"title":"Wzrost błędów timeout","description":"Po wdrożeniu wzrosła liczba timeoutów. Brak jeszcze danych z metryk.","environment":"staging"}'
+  -d '{"title":"Increase in timeout errors","description":"Timeouts have increased since deployment. There is no metrics data yet.","environment":"staging"}'
 ```
 
-Pozostałe endpointy: `GET /api/v1/k8s/diagnostics`, `GET /api/v1/k8s/pods/{pod_name}/logs`, `GET /api/v1/knowledge`, `DELETE /api/v1/knowledge/{id}`, `POST /api/v1/approvals`, `POST /api/v1/approvals/{id}/decision`, `GET /api/v1/audit`.
+Other endpoints: `GET /api/v1/k8s/diagnostics`, `GET /api/v1/k8s/pods/{pod_name}/logs`, `GET /api/v1/knowledge`, `DELETE /api/v1/knowledge/{id}`, `POST /api/v1/approvals`, `POST /api/v1/approvals/{id}/decision`, `GET /api/v1/audit`.
 
-Wspólny klucz API jest przeznaczony do lokalnego laboratorium; nie zapewnia indywidualnej tożsamości zatwierdzającego ani zastępstwa dla SSO/RBAC w środowisku produkcyjnym. Decyzja approval jest tylko wpisem audytowym — nie uruchamia zaakceptowanej akcji.
+The shared API key is intended for a local lab; it does not provide individual approver identity or replace SSO/RBAC in production. An approval decision is only an audit record — it does not execute the approved action.
 
-## Lab k3s
+## k3s lab
 
-Lokalny klaster k3s dostępny dla kontenera API, cztery testowe usługi oraz skrypty do wywoływania i odtwarzania awarii opisano w [k3s_lab/README.md](./k3s_lab/README.md).
-Szczegółowy opis zakresu diagnostyki, endpointów, RBAC i ograniczeń prywatności znajduje się w [docs/README.md](./docs/README.md).
+The local k3s cluster available to the API container, four test services, and scripts for triggering and recovering from failures are described in [k3s_lab/README.md](./k3s_lab/README.md).
 
-### Pełny use case: od awarii do weryfikacji
+For details about diagnostic scope, endpoints, RBAC, and privacy limitations, see [docs/README.md](./docs/README.md).
 
-Poniższy przebieg pokazuje pracę operatora z agentami i zatwierdzaniem zmian. Wymaga uruchomionej aplikacji, skonfigurowanego dostawcy LLM oraz klastra przygotowanego poleceniem `./k3s_lab/start.sh`.
+### End-to-end use case: from failure to verification
 
-1. **Wywołaj problem i sprawdź stan klastra.** Przykładowo wyłącz testową usługę WWW:
+The following walkthrough shows an operator working with agents and approvals. It requires a running application, a configured LLM provider, and a cluster initialized with `./k3s_lab/start.sh`.
+
+1. **Trigger an issue and check the cluster state.** For example, take down the test web service:
 
    ```sh
    ./k3s_lab/break.sh web-down
    ./k3s_lab/status.sh
    ```
 
-   W statusie deployment `web` będzie miał zero replik.
+   The `web` Deployment will show zero replicas in the status.
 
-2. **Przekaż agentom objawy do zbadania.** W opisie podaj zaobserwowane fakty i środowisko, a nie tylko oczekiwane rozwiązanie:
+2. **Give the agents symptoms to investigate.** Describe the observed facts and the environment, rather than only stating the expected solution:
 
    ```sh
    API_URL=http://localhost:8000
-   API_KEY='wartosc-APP_API_KEY-z-pliku-.env'
+   API_KEY='APP_API_KEY-value-from-.env'
 
    curl -X POST "$API_URL/api/v1/incidents/diagnose" \
      -H 'Content-Type: application/json' \
      -H "X-API-Key: $API_KEY" \
      -d '{
-       "title": "Usługa web nie odpowiada",
-       "description": "W klastrze k3s-lab w namespace devops-lab deployment web ma 0/0 dostępnych replik. Problem pojawił się podczas testu web-down.",
+       "title": "The web service is not responding",
+       "description": "In the k3s-lab cluster, in the devops-lab namespace, the web Deployment has 0/0 available replicas. The problem appeared during the web-down test.",
        "environment": "devops-lab"
      }'
    ```
 
-   Odpowiedź zawiera raporty agentów, rekomendację, snapshot aktualnego stanu klastra (`kubernetes_diagnostics`) oraz identyfikatory incydentu i przebiegu. API samodzielnie pobiera statusy, zdarzenia i ograniczone logi w `devops-lab`; agent formułuje hipotezę na podstawie tych danych, a nie wykonuje naprawy.
+   The response includes agent reports, a recommendation, a snapshot of the current cluster state (`kubernetes_diagnostics`), and incident and run IDs. The API fetches statuses, events, and a limited number of logs from `devops-lab`; the agent forms a hypothesis based on this data and does not perform remediation.
 
-3. **Utwórz prośbę o decyzję.** Jeśli rekomendacja wymaga działania, opisz je konkretnie i utwórz wniosek approval:
+3. **Create an approval request.** If the recommendation calls for action, describe it specifically and create an approval request:
 
    ```sh
    curl -X POST "$API_URL/api/v1/approvals" \
      -H 'Content-Type: application/json' \
      -H "X-API-Key: $API_KEY" \
      -d '{
-       "requested_action": "Przywrócić deployment web do jednej repliki w namespace devops-lab przez zastosowanie manifestów bazowych laboratorium.",
+       "requested_action": "Restore the web Deployment to one replica in the devops-lab namespace by applying the lab baseline manifests.",
        "risk_level": "low",
        "requested_by": "operator"
      }'
    ```
 
-   Zapisz `id` z odpowiedzi. Operator może przejrzeć wniosek, a następnie wysłać decyzję (podstaw identyfikator otrzymany powyżej):
+   Save the `id` from the response. The operator can review the request and then submit a decision (replace the placeholder with the ID received above):
 
    ```sh
    curl -X POST "$API_URL/api/v1/approvals/<approval-id>/decision" \
@@ -153,51 +156,51 @@ Poniższy przebieg pokazuje pracę operatora z agentami i zatwierdzaniem zmian. 
      -d '{
        "decision": "approved",
        "decided_by": "operator",
-       "note": "Zatwierdzono przywrócenie usługi testowej."
+       "note": "Approved restoring the test service."
      }'
    ```
 
-   Decyzja jest rejestrowana w bazie i audycie, ale **nie wykonuje naprawy**. Działanie w klastrze wykonaj oddzielnie, ręcznie i tylko w tym lokalnym laboratorium:
+   The decision is recorded in the database and audit log, but **does not perform remediation**. Carry out the cluster action separately, manually, and only in this local lab:
 
    ```sh
    ./k3s_lab/recover.sh
    ./k3s_lab/status.sh
    ```
 
-4. **Sprawdź rezultat i zamknij pętlę.** Potwierdź w statusie, że deployment `web` ma jedną dostępną replikę, a pody usług są gotowe. Następnie ponownie wyślij diagnozę z aktualnym wynikiem w opisie, aby uzyskać raport kontrolny; API nie prowadzi automatycznego monitoringu ani nie weryfikuje, czy zatwierdzona akcja została wykonana.
+4. **Check the outcome and close the loop.** Confirm in the status that the `web` Deployment has one available replica and the service pods are ready. Then submit a new diagnosis with the current outcome in the description to get a verification report; the API does not perform automatic monitoring or verify whether the approved action was carried out.
 
    ```sh
    curl -X POST "$API_URL/api/v1/incidents/diagnose" \
      -H 'Content-Type: application/json' \
      -H "X-API-Key: $API_KEY" \
      -d '{
-       "title": "Weryfikacja naprawy usługi web",
-       "description": "Po ręcznym uruchomieniu ./k3s_lab/recover.sh deployment web ma 1/1 dostępnych replik, a jego pod jest gotowy. Wynik sprawdzono poleceniem ./k3s_lab/status.sh.",
+       "title": "Verify the web service recovery",
+       "description": "After manually running ./k3s_lab/recover.sh, the web Deployment has 1/1 available replicas and its pod is ready. The result was checked with ./k3s_lab/status.sh.",
        "environment": "devops-lab"
      }'
    ```
 
-Ten scenariusz demonstruje obecny przepływ human-in-the-loop: **operator zgłasza objawy → agenci przygotowują diagnozę i rekomendację → operator podejmuje i zapisuje decyzję → operator wykonuje zatwierdzoną czynność → operator sprawdza i przekazuje wynik**. Aplikacja nie wykonuje poleceń w klastrze; dostęp Kubernetes skonfigurowany dla kontenera jest tylko do odczytu.
+This scenario demonstrates the current human-in-the-loop workflow: **the operator reports symptoms → agents prepare a diagnosis and recommendation → the operator makes and records a decision → the operator performs the approved action → the operator checks and reports the outcome**. The application does not run commands in the cluster; the Kubernetes access configured for the container is read-only.
 
-## Aktualizacja schematu bazy
+## Updating the database schema
 
-Przy uruchomieniu Compose migracje Alembic wykonują się automatycznie. Nową migrację można wygenerować i zastosować wewnątrz kontenera:
+When Compose starts, Alembic migrations run automatically. A new migration can be generated and applied inside the container:
 
 ```sh
 docker compose up -d --build api
 ```
 
-Przebudowa i ponowne uruchomienie API wykonuje `alembic upgrade head`. Aby wygenerować migrację z nowo dodanych lub zmienionych modeli i zapisać ją w katalogu projektu, uruchom:
+Rebuilding and restarting the API runs `alembic upgrade head`. To generate a migration from newly added or changed models and save it in the project directory, run:
 
 ```sh
-docker compose run --rm -v ./app:/app/app -v ./alembic:/app/alembic api alembic revision --autogenerate -m "opis zmiany"
+docker compose run --rm -v ./app:/app/app -v ./alembic:/app/alembic api alembic revision --autogenerate -m "describe the change"
 ```
 
-Po zmianach modeli sprawdź wygenerowaną migrację i dodaj ją do repozytorium. Nie uruchamiaj `alembic downgrade` na danych produkcyjnych bez planu kopii i odtworzenia.
+After changing models, review the generated migration and add it to the repository. Do not run `alembic downgrade` on production data without a backup and recovery plan.
 
-## Testy lokalne
+## Local tests
 
-Wymagany Python 3.12+:
+Python 3.12+ is required:
 
 ```sh
 python -m venv .venv
